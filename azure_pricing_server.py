@@ -833,11 +833,14 @@ class AzurePricingServer:
         }
 
 # Create the FastMCP server with remote transport support
+# Note: Default host is 127.0.0.1 (localhost only) for security.
+# Use --host 0.0.0.0 to expose to all network interfaces when deploying
+# behind a reverse proxy or in a trusted network environment.
 mcp = FastMCP(
     "azure-pricing",
     instructions="Azure Pricing MCP Server - Query Azure retail pricing information using the Azure Retail Prices API. "
     "Supports price search, comparison, cost estimation, and SKU discovery.",
-    host="0.0.0.0",
+    host="127.0.0.1",
     port=8000,
 )
 
@@ -1354,8 +1357,8 @@ def parse_args():
     parser.add_argument(
         "--host",
         type=str,
-        default="0.0.0.0",
-        help="Host to bind to for HTTP transports (default: 0.0.0.0)",
+        default="127.0.0.1",
+        help="Host to bind to for HTTP transports (default: 127.0.0.1). Use 0.0.0.0 to expose to all interfaces.",
     )
     parser.add_argument(
         "--port",

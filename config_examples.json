@@ -70,7 +70,7 @@
     "remote_server": [
       "1. Install dependencies: pip install -r requirements.txt",
       "2. Start the server: python azure_pricing_server.py",
-      "3. The server runs on http://0.0.0.0:8000 by default",
+      "3. The server runs on http://localhost:8000 by default",
       "4. Streamable HTTP endpoint: http://localhost:8000/mcp",
       "5. SSE endpoint: http://localhost:8000/sse (with --transport sse)",
       "6. Configure your MCP client to connect to the endpoint URL"
@@ -100,7 +100,7 @@
       "stdio": "Local access via standard input/output"
     },
     "cli_examples": [
-      "python azure_pricing_server.py                                    # Streamable HTTP on 0.0.0.0:8000",
+      "python azure_pricing_server.py                                    # Streamable HTTP on localhost:8000",
       "python azure_pricing_server.py --transport sse --port 9000        # SSE on port 9000",
       "python azure_pricing_server.py --transport stdio                  # Local stdio",
       "python azure_pricing_server.py --host 127.0.0.1 --port 3000      # Bind to localhost only"

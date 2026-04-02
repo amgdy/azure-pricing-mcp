@@ -81,10 +81,11 @@ pip install -r requirements.txt
 
 ### Remote Server (Streamable HTTP - Recommended)
 ```bash
-# Default: Streamable HTTP on 0.0.0.0:8000
+# Default: Streamable HTTP on localhost:8000
 python azure_pricing_server.py
 
 # Custom host and port
+# Custom host and port (expose to all interfaces)
 python azure_pricing_server.py --host 0.0.0.0 --port 9000
 
 # As a Python module
@@ -108,7 +109,7 @@ usage: azure_pricing_server.py [-h] [--transport {stdio,sse,streamable-http}]
 
 options:
   --transport {stdio,sse,streamable-http}  Transport protocol (default: streamable-http)
-  --host HOST                               Host to bind to (default: 0.0.0.0)
+  --host HOST                               Host to bind to (default: 127.0.0.1)
   --port PORT                               Port to bind to (default: 8000)
 ```
 
