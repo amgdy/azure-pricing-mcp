@@ -104,5 +104,6 @@ module mcpServer './modules/container-app.bicep' = {
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
 output AZURE_CONTAINER_REGISTRY_NAME string = containerRegistry.outputs.name
 output MCP_SERVER_URI string = mcpServer.outputs.uri
-output MCP_SERVER_STREAMABLE_HTTP_ENDPOINT string = mcpServer.outputs.uri
+output MCP_SERVER_STREAMABLE_HTTP_ENDPOINT string = '${mcpServer.outputs.uri}mcp'
 output MCP_SERVER_SSE_ENDPOINT string = '${mcpServer.outputs.uri}sse'
+output MCP_SERVER_TEST_UI string = mcpServer.outputs.uri

@@ -863,7 +863,7 @@ mcp = FastMCP(
     "Supports price search, comparison, cost estimation, and SKU discovery.",
     host="127.0.0.1",
     port=8000,
-    streamable_http_path="/",
+    streamable_http_path="/mcp",
     transport_security=_transport_security,
 )
 
@@ -1394,26 +1394,41 @@ def parse_args():
 
 
 def _run_all_transports(host: str, port: int):
-    """Run both SSE and Streamable HTTP transports simultaneously on a single server.
+    """Run SSE, Streamable HTTP, and a test UI on a single server.
 
     This creates a combined Starlette application that serves:
-      - /         -> Streamable HTTP transport (recommended)
+      - /         -> Test UI (HTML page to exercise all MCP tools)
+      - /mcp      -> Streamable HTTP transport (recommended for MCP clients)
       - /sse      -> SSE transport (legacy/backward compatibility)
       - /messages -> SSE message handling
     """
     import uvicorn
+    from pathlib import Path
     from starlette.applications import Starlette
+    from starlette.responses import HTMLResponse
+    from starlette.routing import Route
 
     # Get the Starlette sub-apps from FastMCP.
-    # The streamable HTTP app must be created first so its session_manager
-    # is initialized, which we need for the combined lifespan.
     streamable_app = mcp.streamable_http_app()
     sse_app = mcp.sse_app()
 
-    # Combine all routes into a single Starlette application.
-    # SSE routes first (more specific /sse, /messages paths),
-    # then streamable HTTP route (/ catch-all) last.
-    combined_routes = list(sse_app.routes) + list(streamable_app.routes)
+    # Load the test UI HTML
+    ui_path = Path(__file__).parent / "static" / "index.html"
+    _ui_html: str | None = None
+    if ui_path.exists():
+        _ui_html = ui_path.read_text()
+
+    async def homepage(request):
+        if _ui_html:
+            return HTMLResponse(_ui_html)
+        return HTMLResponse("<h1>Azure Pricing MCP Server</h1><p>MCP endpoint: <code>/mcp</code></p>")
+
+    # Build combined routes:
+    # 1. Test UI at /
+    # 2. SSE routes (/sse, /messages)
+    # 3. Streamable HTTP route (/mcp)
+    ui_routes = [Route("/", homepage)]
+    combined_routes = ui_routes + list(sse_app.routes) + list(streamable_app.routes)
     app = Starlette(
         routes=combined_routes,
         lifespan=lambda app: mcp.session_manager.run(),
@@ -1421,7 +1436,8 @@ def _run_all_transports(host: str, port: int):
 
     logger.info("Starting Azure Pricing MCP Server with ALL transports")
     logger.info(f"Listening on {host}:{port}")
-    logger.info(f"Streamable HTTP endpoint: http://{host}:{port}/")
+    logger.info(f"Test UI:                  http://{host}:{port}/")
+    logger.info(f"Streamable HTTP endpoint: http://{host}:{port}/mcp")
     logger.info(f"SSE endpoint:             http://{host}:{port}/sse")
 
     uvicorn.run(app, host=host, port=port)
@@ -1442,7 +1458,7 @@ def main():
         if args.transport in ("sse", "streamable-http"):
             logger.info(f"Listening on {args.host}:{args.port}")
             if args.transport == "streamable-http":
-                logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/")
+                logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/mcp")
             elif args.transport == "sse":
                 logger.info(f"SSE endpoint: http://{args.host}:{args.port}/sse")
 

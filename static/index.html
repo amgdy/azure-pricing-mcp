@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Pricing MCP Server</title>
+<style>
+  :root { --blue: #0078d4; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #333; --muted: #666; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  header { background: var(--blue); color: #fff; padding: 1.5rem 2rem; }
+  header h1 { font-size: 1.5rem; font-weight: 600; }
+  header p { opacity: .85; font-size: .9rem; margin-top: .25rem; }
+  .container { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; }
+  .status-bar { display: flex; align-items: center; gap: .5rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1.5rem; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+  .dot.ok { background: #28a745; }
+  .dot.err { background: #dc3545; }
+  .tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+  .card h3 { font-size: 1rem; margin-bottom: .75rem; color: var(--blue); }
+  .field { margin-bottom: .6rem; }
+  .field label { display: block; font-size: .8rem; font-weight: 500; margin-bottom: .2rem; color: var(--muted); }
+  .field input, .field select { width: 100%; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 4px; font-size: .85rem; }
+  .btn { display: inline-block; background: var(--blue); color: #fff; border: none; padding: .5rem 1.25rem; border-radius: 4px; cursor: pointer; font-size: .85rem; margin-top: .5rem; }
+  .btn:hover { opacity: .9; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  #output { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+  #output h3 { font-size: 1rem; margin-bottom: .75rem; }
+  #result { white-space: pre-wrap; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .82rem; max-height: 500px; overflow: auto; background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; }
+  .endpoint-info { font-size: .85rem; color: var(--muted); }
+  .endpoint-info code { background: #eee; padding: .1rem .4rem; border-radius: 3px; font-size: .8rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💰 Azure Pricing MCP Server</h1>
+  <p>Query Azure retail pricing via the Model Context Protocol</p>
+</header>
+
+<div class="container">
+
+  <div class="status-bar">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Checking connection…</span>
+    <span style="margin-left:auto" class="endpoint-info">MCP endpoint: <code>/mcp</code> &nbsp;|&nbsp; SSE: <code>/sse</code></span>
+  </div>
+
+  <div class="tools">
+
+    <!-- azure_price_search -->
+    <div class="card">
+      <h3>🔍 Price Search</h3>
+      <div class="field"><label>Service Name</label><input id="ps-service" placeholder="e.g. Virtual Machines"></div>
+      <div class="field"><label>Region</label><input id="ps-region" placeholder="e.g. eastus"></div>
+      <div class="field"><label>SKU Name</label><input id="ps-sku" placeholder="e.g. Standard_D2s_v3"></div>
+      <div class="field"><label>Price Type</label>
+        <select id="ps-type"><option value="">Any</option><option value="Consumption">Consumption</option><option value="Reservation">Reservation</option></select>
+      </div>
+      <div class="field"><label>Currency</label><input id="ps-currency" value="USD"></div>
+      <div class="field"><label>Limit</label><input id="ps-limit" type="number" value="10"></div>
+      <button class="btn" onclick="callTool('azure_price_search',{service_name:v('ps-service'),region:v('ps-region'),sku_name:v('ps-sku'),price_type:v('ps-type'),currency_code:v('ps-currency'),limit:parseInt(v('ps-limit'))||10})">Search</button>
+    </div>
+
+    <!-- azure_price_compare -->
+    <div class="card">
+      <h3>⚖️ Price Compare</h3>
+      <div class="field"><label>Service Name *</label><input id="pc-service" placeholder="e.g. Virtual Machines"></div>
+      <div class="field"><label>SKU Name</label><input id="pc-sku" placeholder="e.g. Standard_D2s_v3"></div>
+      <div class="field"><label>Regions (comma-separated)</label><input id="pc-regions" placeholder="e.g. eastus,westeurope"></div>
+      <div class="field"><label>Currency</label><input id="pc-currency" value="USD"></div>
+      <button class="btn" onclick="callTool('azure_price_compare',{service_name:v('pc-service'),sku_name:v('pc-sku'),regions:v('pc-regions')?v('pc-regions').split(',').map(s=>s.trim()):null,currency_code:v('pc-currency')})">Compare</button>
+    </div>
+
+    <!-- azure_cost_estimate -->
+    <div class="card">
+      <h3>💡 Cost Estimate</h3>
+      <div class="field"><label>Service Name *</label><input id="ce-service" placeholder="e.g. Virtual Machines"></div>
+      <div class="field"><label>SKU Name *</label><input id="ce-sku" placeholder="e.g. Standard_D2s_v3"></div>
+      <div class="field"><label>Region *</label><input id="ce-region" placeholder="e.g. eastus"></div>
+      <div class="field"><label>Hours / Month</label><input id="ce-hours" type="number" value="730"></div>
+      <div class="field"><label>Currency</label><input id="ce-currency" value="USD"></div>
+      <button class="btn" onclick="callTool('azure_cost_estimate',{service_name:v('ce-service'),sku_name:v('ce-sku'),region:v('ce-region'),hours_per_month:parseFloat(v('ce-hours'))||730,currency_code:v('ce-currency')})">Estimate</button>
+    </div>
+
+    <!-- azure_discover_skus -->
+    <div class="card">
+      <h3>📦 Discover SKUs</h3>
+      <div class="field"><label>Service Name *</label><input id="ds-service" placeholder="e.g. Virtual Machines"></div>
+      <div class="field"><label>Region</label><input id="ds-region" placeholder="e.g. eastus"></div>
+      <div class="field"><label>Price Type</label>
+        <select id="ds-type"><option value="Consumption">Consumption</option><option value="Reservation">Reservation</option></select>
+      </div>
+      <div class="field"><label>Limit</label><input id="ds-limit" type="number" value="50"></div>
+      <button class="btn" onclick="callTool('azure_discover_skus',{service_name:v('ds-service'),region:v('ds-region'),price_type:v('ds-type'),limit:parseInt(v('ds-limit'))||50})">Discover</button>
+    </div>
+
+    <!-- azure_sku_discovery -->
+    <div class="card">
+      <h3>🧠 Smart SKU Discovery</h3>
+      <div class="field"><label>Service Hint *</label><input id="sd-hint" placeholder="e.g. app service, vm, storage"></div>
+      <div class="field"><label>Region</label><input id="sd-region" placeholder="e.g. eastus"></div>
+      <div class="field"><label>Currency</label><input id="sd-currency" value="USD"></div>
+      <div class="field"><label>Limit</label><input id="sd-limit" type="number" value="30"></div>
+      <button class="btn" onclick="callTool('azure_sku_discovery',{service_hint:v('sd-hint'),region:v('sd-region'),currency_code:v('sd-currency'),limit:parseInt(v('sd-limit'))||30})">Discover</button>
+    </div>
+
+    <!-- get_customer_discount -->
+    <div class="card">
+      <h3>💰 Customer Discount</h3>
+      <div class="field"><label>Customer ID</label><input id="cd-id" placeholder="optional"></div>
+      <button class="btn" onclick="callTool('get_customer_discount',{customer_id:v('cd-id')||null})">Get Discount</button>
+    </div>
+
+  </div>
+
+  <div id="output">
+    <h3>Response</h3>
+    <pre id="result">Waiting for a request…</pre>
+  </div>
+
+</div>
+
+<script>
+const MCP_URL = window.location.origin + '/mcp';
+let sessionId = null;
+let msgId = 0;
+
+function v(id) { return document.getElementById(id).value.trim(); }
+
+function setStatus(ok, msg) {
+  document.getElementById('statusDot').className = 'dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('statusText').textContent = msg;
+}
+
+// Send a JSON-RPC request to the MCP endpoint
+async function rpc(method, params) {
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
+  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+  const body = JSON.stringify({ jsonrpc: '2.0', id: ++msgId, method, params });
+  const res = await fetch(MCP_URL, { method: 'POST', headers, body });
+  // Capture session id from response header
+  const sid = res.headers.get('Mcp-Session-Id');
+  if (sid) sessionId = sid;
+
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('text/event-stream')) {
+    // Parse SSE stream and collect JSON-RPC responses
+    const text = await res.text();
+    const lines = text.split('\n');
+    let result = null;
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try { result = JSON.parse(line.slice(6)); } catch {}
+      }
+    }
+    return result;
+  }
+  return res.json();
+}
+
+// Initialize session
+async function init() {
+  try {
+    const res = await rpc('initialize', {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'azure-pricing-test-ui', version: '1.0.0' }
+    });
+    if (res && (res.result || res.id)) {
+      // Send initialized notification
+      const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
+      if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+      await fetch(MCP_URL, {
+        method: 'POST', headers,
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
+      });
+      setStatus(true, 'Connected — session ' + (sessionId || 'active'));
+    } else {
+      setStatus(false, 'Unexpected response');
+    }
+  } catch (e) {
+    setStatus(false, 'Connection failed: ' + e.message);
+  }
+}
+
+async function callTool(name, args) {
+  const el = document.getElementById('result');
+  el.textContent = '⏳ Calling ' + name + '…';
+  // Remove null/empty string args
+  const cleanArgs = {};
+  for (const [k, val] of Object.entries(args)) {
+    if (val !== null && val !== '' && val !== undefined) cleanArgs[k] = val;
+  }
+  try {
+    if (!sessionId) await init();
+    const res = await rpc('tools/call', { name, arguments: cleanArgs });
+    if (res && res.result) {
+      const content = res.result.content || res.result;
+      if (Array.isArray(content)) {
+        el.textContent = content.map(c => c.text || JSON.stringify(c, null, 2)).join('\n');
+      } else if (typeof content === 'string') {
+        el.textContent = content;
+      } else {
+        el.textContent = JSON.stringify(content, null, 2);
+      }
+    } else if (res && res.error) {
+      el.textContent = '❌ Error: ' + JSON.stringify(res.error, null, 2);
+    } else {
+      el.textContent = JSON.stringify(res, null, 2);
+    }
+  } catch (e) {
+    el.textContent = '❌ ' + e.message;
+  }
+}
+
+// Auto-connect on load
+init();
+</script>
+</body>
+</html>
