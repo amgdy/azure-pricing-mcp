@@ -3,8 +3,10 @@
 Azure Pricing MCP Server
 
 A Model Context Protocol server that provides tools for querying Azure retail pricing.
+Supports multiple transports: stdio, SSE, and Streamable HTTP for remote access.
 """
 
+import argparse
 import asyncio
 import json
 import logging
@@ -12,19 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlencode, quote
 
 import aiohttp
-from mcp.server import Server
-from mcp.server.models import InitializationOptions
-from mcp.server.session import ServerSession
-from mcp.server.stdio import stdio_server
-from mcp.types import (
-    CallToolRequest,
-    CallToolResult,
-    ListToolsRequest,
-    ListToolsResult,
-    Tool,
-    TextContent,
-)
-from pydantic import BaseModel, Field
+from mcp.server.fastmcp import FastMCP
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -842,363 +832,262 @@ class AzurePricingServer:
             "match_type": "no_match"
         }
 
-# Create the MCP server
-server = Server("azure-pricing")
+# Create the FastMCP server with remote transport support
+mcp = FastMCP(
+    "azure-pricing",
+    instructions="Azure Pricing MCP Server - Query Azure retail pricing information using the Azure Retail Prices API. "
+    "Supports price search, comparison, cost estimation, and SKU discovery.",
+    host="0.0.0.0",
+    port=8000,
+)
 
 # Global server instance
 pricing_server = AzurePricingServer()
 
-@server.list_tools()
-async def handle_list_tools() -> List[Tool]:
-    """List available tools."""
-    return [
-        Tool(
-            name="azure_price_search",
-            description="Search Azure retail prices with various filters",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_name": {
-                        "type": "string",
-                        "description": "Azure service name (e.g., 'Virtual Machines', 'Storage')"
-                    },
-                    "service_family": {
-                        "type": "string",
-                        "description": "Service family (e.g., 'Compute', 'Storage', 'Networking')"
-                    },
-                    "region": {
-                        "type": "string",
-                        "description": "Azure region (e.g., 'eastus', 'westeurope')"
-                    },
-                    "sku_name": {
-                        "type": "string",
-                        "description": "SKU name to search for (partial matches supported)"
-                    },
-                    "price_type": {
-                        "type": "string",
-                        "description": "Price type: 'Consumption', 'Reservation', or 'DevTestConsumption'"
-                    },
-                    "currency_code": {
-                        "type": "string",
-                        "description": "Currency code (default: USD)",
-                        "default": "USD"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results (default: 50)",
-                        "default": 50
-                    },
-                    "discount_percentage": {
-                        "type": "number",
-                        "description": "Discount percentage to apply to prices (e.g., 10 for 10% discount)"
-                    },
-                    "validate_sku": {
-                        "type": "boolean",
-                        "description": "Whether to validate SKU names and provide suggestions (default: true)",
-                        "default": true
-                    }
-                }
-            }
-        ),
-        Tool(
-            name="azure_price_compare",
-            description="Compare Azure prices across regions or SKUs",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_name": {
-                        "type": "string",
-                        "description": "Azure service name to compare"
-                    },
-                    "sku_name": {
-                        "type": "string",
-                        "description": "Specific SKU to compare (optional)"
-                    },
-                    "regions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of regions to compare (if not provided, compares SKUs)"
-                    },
-                    "currency_code": {
-                        "type": "string",
-                        "description": "Currency code (default: USD)",
-                        "default": "USD"
-                    },
-                    "discount_percentage": {
-                        "type": "number",
-                        "description": "Discount percentage to apply to prices (e.g., 10 for 10% discount)"
-                    }
-                },
-                "required": ["service_name"]
-            }
-        ),
-        Tool(
-            name="azure_cost_estimate",
-            description="Estimate Azure costs based on usage patterns",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_name": {
-                        "type": "string",
-                        "description": "Azure service name"
-                    },
-                    "sku_name": {
-                        "type": "string",
-                        "description": "SKU name"
-                    },
-                    "region": {
-                        "type": "string",
-                        "description": "Azure region"
-                    },
-                    "hours_per_month": {
-                        "type": "number",
-                        "description": "Expected hours of usage per month (default: 730 for full month)",
-                        "default": 730
-                    },
-                    "currency_code": {
-                        "type": "string",
-                        "description": "Currency code (default: USD)",
-                        "default": "USD"
-                    },
-                    "discount_percentage": {
-                        "type": "number",
-                        "description": "Discount percentage to apply to prices (e.g., 10 for 10% discount)"
-                    }
-                },
-                "required": ["service_name", "sku_name", "region"]
-            }
-        ),
-        Tool(
-            name="azure_discover_skus",
-            description="Discover available SKUs for a specific Azure service",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_name": {
-                        "type": "string",
-                        "description": "Azure service name"
-                    },
-                    "region": {
-                        "type": "string",
-                        "description": "Azure region (optional)"
-                    },
-                    "price_type": {
-                        "type": "string",
-                        "description": "Price type (default: 'Consumption')",
-                        "default": "Consumption"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of SKUs to return (default: 100)",
-                        "default": 100
-                    }
-                },
-                "required": ["service_name"]
-            }
-        ),
-        Tool(
-            name="azure_sku_discovery",
-            description="Discover available SKUs for Azure services with intelligent name matching",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "service_hint": {
-                        "type": "string",
-                        "description": "Service name or description (e.g., 'app service', 'web app', 'vm', 'storage'). Supports fuzzy matching."
-                    },
-                    "region": {
-                        "type": "string",
-                        "description": "Optional Azure region to filter results"
-                    },
-                    "currency_code": {
-                        "type": "string",
-                        "description": "Currency code (default: USD)",
-                        "default": "USD"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results (default: 30)",
-                        "default": 30
-                    }
-                },
-                "required": ["service_hint"]
-            }
-        ),
-        Tool(
-            name="get_customer_discount",
-            description="Get customer discount information. Returns default 10% discount for all customers.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "description": "Customer ID (optional, defaults to 'default' customer)"
-                    }
-                }
-            }
-        )
-    ]
 
-@server.call_tool()
-async def handle_call_tool(name: str, arguments: dict) -> list:
-    """Handle tool calls."""
-    
+# --- Tool definitions using FastMCP decorators ---
+
+
+@mcp.tool()
+async def azure_price_search(
+    service_name: Optional[str] = None,
+    service_family: Optional[str] = None,
+    region: Optional[str] = None,
+    sku_name: Optional[str] = None,
+    price_type: Optional[str] = None,
+    currency_code: str = "USD",
+    limit: int = 50,
+    discount_percentage: Optional[float] = None,
+    validate_sku: bool = True,
+) -> str:
+    """Search Azure retail prices with various filters.
+
+    Args:
+        service_name: Azure service name (e.g., 'Virtual Machines', 'Storage')
+        service_family: Service family (e.g., 'Compute', 'Storage', 'Networking')
+        region: Azure region (e.g., 'eastus', 'westeurope')
+        sku_name: SKU name to search for (partial matches supported)
+        price_type: Price type: 'Consumption', 'Reservation', or 'DevTestConsumption'
+        currency_code: Currency code (default: USD)
+        limit: Maximum number of results (default: 50)
+        discount_percentage: Discount percentage to apply to prices (e.g., 10 for 10% discount)
+        validate_sku: Whether to validate SKU names and provide suggestions (default: true)
+    """
     try:
         async with pricing_server:
-            if name == "azure_price_search":
-                # Always get customer discount and apply it
-                customer_discount = await pricing_server.get_customer_discount()
-                discount_percentage = customer_discount["discount_percentage"]
-                
-                # Add discount to arguments if not already specified
-                if "discount_percentage" not in arguments:
-                    arguments["discount_percentage"] = discount_percentage
-                
-                result = await pricing_server.search_azure_prices(**arguments)
-                
-                # Format the response
-                if result["items"]:
-                    formatted_items = []
-                    for item in result["items"]:
-                        formatted_item = {
-                            "service": item.get("serviceName"),
-                            "product": item.get("productName"),
-                            "sku": item.get("skuName"),
-                            "region": item.get("armRegionName"),
-                            "location": item.get("location"),
-                            "discounted_price": item.get("retailPrice"),
-                            "unit": item.get("unitOfMeasure"),
-                            "type": item.get("type"),
-                            "savings_plans": item.get("savingsPlan", [])
-                        }
-                        
-                        # Add original price and savings if discount was applied
-                        if "originalPrice" in item:
-                            original_price = item["originalPrice"]
-                            discounted_price = item["retailPrice"]
-                            savings_amount = original_price - discounted_price
-                            
-                            formatted_item["original_price"] = original_price
-                            formatted_item["savings_amount"] = round(savings_amount, 6)
-                            formatted_item["savings_percentage"] = round((savings_amount / original_price * 100), 2) if original_price > 0 else 0
-                        
-                        formatted_items.append(formatted_item)
-                    
-                    if result["count"] > 0:
-                        response_text = f"Found {result['count']} Azure pricing results:\n\n"
-                        
-                        # Add discount information if applied
-                        if "discount_applied" in result:
-                            response_text += f"💰 **Customer Discount Applied: {result['discount_applied']['percentage']}%**\n"
-                            response_text += f"   {result['discount_applied']['note']}\n\n"
-                        
-                        # Add SKU validation info if present
-                        if "sku_validation" in result:
-                            validation = result["sku_validation"]
-                            response_text += f"⚠️ SKU Validation: {validation['message']}\n"
-                            if validation["suggestions"]:
-                                response_text += "🔍 Suggested SKUs:\n"
-                                for suggestion in validation["suggestions"][:3]:
-                                    response_text += f"   • {suggestion['sku_name']}: ${suggestion['price']} per {suggestion['unit']}\n"
-                                response_text += "\n"
-                        
-                        # Add clarification info if present
-                        if "clarification" in result:
-                            clarification = result["clarification"]
-                            response_text += f"ℹ️ {clarification['message']}\n"
-                            if clarification["suggestions"]:
-                                response_text += "Top matches:\n"
-                                for suggestion in clarification["suggestions"]:
-                                    response_text += f"   • {suggestion}\n"
-                                response_text += "\n"
-                        
-                        # Add summary of savings if discount was applied
-                        if "discount_applied" in result:
-                            total_original_cost = sum(item.get("original_price", 0) for item in formatted_items)
-                            total_discounted_cost = sum(item.get("discounted_price", 0) for item in formatted_items)
-                            total_savings = total_original_cost - total_discounted_cost
-                            
-                            if total_savings > 0:
-                                response_text += f"💰 **Total Savings Summary:**\n"
-                                response_text += f"   Original Total: ${total_original_cost:.6f}\n"
-                                response_text += f"   Discounted Total: ${total_discounted_cost:.6f}\n"
-                                response_text += f"   **You Save: ${total_savings:.6f}**\n\n"
-                        
-                        response_text += "**Detailed Pricing:**\n"
-                        response_text += json.dumps(formatted_items, indent=2)
-                        
-                        return [
-                            TextContent(
-                                type="text",
-                                text=response_text
-                            )
-                        ]
-                    else:
-                        # Handle case where items exist but count is 0 (shouldn't happen, but safety)
-                        response_text = "No valid pricing results found."
-                        return [
-                            TextContent(
-                                type="text",
-                                text=response_text
-                            )
-                        ]
-                else:
-                    response_text = "No pricing results found for the specified criteria."
-                    
-                    # Show discount info even when no results
+            # Always get customer discount and apply it
+            customer_discount = await pricing_server.get_customer_discount()
+            default_discount = customer_discount["discount_percentage"]
+
+            # Use provided discount or default customer discount
+            if discount_percentage is None:
+                discount_percentage = default_discount
+
+            result = await pricing_server.search_azure_prices(
+                service_name=service_name,
+                service_family=service_family,
+                region=region,
+                sku_name=sku_name,
+                price_type=price_type,
+                currency_code=currency_code,
+                limit=limit,
+                discount_percentage=discount_percentage,
+                validate_sku=validate_sku,
+            )
+
+            # Format the response
+            if result["items"]:
+                formatted_items = []
+                for item in result["items"]:
+                    formatted_item = {
+                        "service": item.get("serviceName"),
+                        "product": item.get("productName"),
+                        "sku": item.get("skuName"),
+                        "region": item.get("armRegionName"),
+                        "location": item.get("location"),
+                        "discounted_price": item.get("retailPrice"),
+                        "unit": item.get("unitOfMeasure"),
+                        "type": item.get("type"),
+                        "savings_plans": item.get("savingsPlan", []),
+                    }
+
+                    # Add original price and savings if discount was applied
+                    if "originalPrice" in item:
+                        original_price = item["originalPrice"]
+                        discounted_price = item["retailPrice"]
+                        savings_amount = original_price - discounted_price
+
+                        formatted_item["original_price"] = original_price
+                        formatted_item["savings_amount"] = round(savings_amount, 6)
+                        formatted_item["savings_percentage"] = (
+                            round((savings_amount / original_price * 100), 2)
+                            if original_price > 0
+                            else 0
+                        )
+
+                    formatted_items.append(formatted_item)
+
+                if result["count"] > 0:
+                    response_text = f"Found {result['count']} Azure pricing results:\n\n"
+
+                    # Add discount information if applied
                     if "discount_applied" in result:
-                        response_text += f"\n\n💰 Note: Your {result['discount_applied']['percentage']}% customer discount would have been applied to any results."
-                    
+                        response_text += f"💰 **Customer Discount Applied: {result['discount_applied']['percentage']}%**\n"
+                        response_text += (
+                            f"   {result['discount_applied']['note']}\n\n"
+                        )
+
                     # Add SKU validation info if present
                     if "sku_validation" in result:
                         validation = result["sku_validation"]
-                        response_text += f"\n\n⚠️ {validation['message']}\n"
+                        response_text += (
+                            f"⚠️ SKU Validation: {validation['message']}\n"
+                        )
                         if validation["suggestions"]:
-                            response_text += "\n🔍 Did you mean one of these SKUs?\n"
-                            for suggestion in validation["suggestions"][:5]:
-                                response_text += f"   • {suggestion['sku_name']}: ${suggestion['price']} per {suggestion['unit']}"
-                                if suggestion['region']:
-                                    response_text += f" (in {suggestion['region']})"
-                                response_text += "\n"
-                    
-                    return [
-                        TextContent(
-                            type="text",
-                            text=response_text
+                            response_text += "🔍 Suggested SKUs:\n"
+                            for suggestion in validation["suggestions"][:3]:
+                                response_text += f"   • {suggestion['sku_name']}: ${suggestion['price']} per {suggestion['unit']}\n"
+                            response_text += "\n"
+
+                    # Add clarification info if present
+                    if "clarification" in result:
+                        clarification = result["clarification"]
+                        response_text += f"ℹ️ {clarification['message']}\n"
+                        if clarification["suggestions"]:
+                            response_text += "Top matches:\n"
+                            for suggestion in clarification["suggestions"]:
+                                response_text += f"   • {suggestion}\n"
+                            response_text += "\n"
+
+                    # Add summary of savings if discount was applied
+                    if "discount_applied" in result:
+                        total_original_cost = sum(
+                            item.get("original_price", 0) for item in formatted_items
                         )
-                    ]
-            
-            elif name == "azure_price_compare":
-                result = await pricing_server.compare_prices(**arguments)
-                
-                response_text = f"Price comparison for {result['service_name']}:\n\n"
-                
-                # Add discount information if applied
+                        total_discounted_cost = sum(
+                            item.get("discounted_price", 0) for item in formatted_items
+                        )
+                        total_savings = total_original_cost - total_discounted_cost
+
+                        if total_savings > 0:
+                            response_text += "💰 **Total Savings Summary:**\n"
+                            response_text += (
+                                f"   Original Total: ${total_original_cost:.6f}\n"
+                            )
+                            response_text += f"   Discounted Total: ${total_discounted_cost:.6f}\n"
+                            response_text += (
+                                f"   **You Save: ${total_savings:.6f}**\n\n"
+                            )
+
+                    response_text += "**Detailed Pricing:**\n"
+                    response_text += json.dumps(formatted_items, indent=2)
+
+                    return response_text
+                else:
+                    return "No valid pricing results found."
+            else:
+                response_text = (
+                    "No pricing results found for the specified criteria."
+                )
+
+                # Show discount info even when no results
                 if "discount_applied" in result:
-                    response_text += f"💰 {result['discount_applied']['percentage']}% discount applied - {result['discount_applied']['note']}\n\n"
-                
-                response_text += json.dumps(result["comparisons"], indent=2)
-                
-                return [
-                    TextContent(
-                        type="text",
-                        text=response_text
-                    )
-                ]
-            
-            elif name == "azure_cost_estimate":
-                result = await pricing_server.estimate_costs(**arguments)
-                
-                if "error" in result:
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Error: {result['error']}"
-                        )
-                    ]
-                
-                # Format cost estimate
-                estimate_text = f"""
+                    response_text += f"\n\n💰 Note: Your {result['discount_applied']['percentage']}% customer discount would have been applied to any results."
+
+                # Add SKU validation info if present
+                if "sku_validation" in result:
+                    validation = result["sku_validation"]
+                    response_text += f"\n\n⚠️ {validation['message']}\n"
+                    if validation["suggestions"]:
+                        response_text += "\n🔍 Did you mean one of these SKUs?\n"
+                        for suggestion in validation["suggestions"][:5]:
+                            response_text += f"   • {suggestion['sku_name']}: ${suggestion['price']} per {suggestion['unit']}"
+                            if suggestion["region"]:
+                                response_text += f" (in {suggestion['region']})"
+                            response_text += "\n"
+
+                return response_text
+    except Exception as e:
+        logger.error(f"Error in azure_price_search: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def azure_price_compare(
+    service_name: str,
+    sku_name: Optional[str] = None,
+    regions: Optional[List[str]] = None,
+    currency_code: str = "USD",
+    discount_percentage: Optional[float] = None,
+) -> str:
+    """Compare Azure prices across regions or SKUs.
+
+    Args:
+        service_name: Azure service name to compare
+        sku_name: Specific SKU to compare (optional)
+        regions: List of regions to compare (if not provided, compares SKUs)
+        currency_code: Currency code (default: USD)
+        discount_percentage: Discount percentage to apply to prices (e.g., 10 for 10% discount)
+    """
+    try:
+        async with pricing_server:
+            result = await pricing_server.compare_prices(
+                service_name=service_name,
+                sku_name=sku_name,
+                regions=regions,
+                currency_code=currency_code,
+                discount_percentage=discount_percentage,
+            )
+
+            response_text = f"Price comparison for {result['service_name']}:\n\n"
+
+            # Add discount information if applied
+            if "discount_applied" in result:
+                response_text += f"💰 {result['discount_applied']['percentage']}% discount applied - {result['discount_applied']['note']}\n\n"
+
+            response_text += json.dumps(result["comparisons"], indent=2)
+
+            return response_text
+    except Exception as e:
+        logger.error(f"Error in azure_price_compare: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def azure_cost_estimate(
+    service_name: str,
+    sku_name: str,
+    region: str,
+    hours_per_month: float = 730,
+    currency_code: str = "USD",
+    discount_percentage: Optional[float] = None,
+) -> str:
+    """Estimate Azure costs based on usage patterns.
+
+    Args:
+        service_name: Azure service name
+        sku_name: SKU name
+        region: Azure region
+        hours_per_month: Expected hours of usage per month (default: 730 for full month)
+        currency_code: Currency code (default: USD)
+        discount_percentage: Discount percentage to apply to prices (e.g., 10 for 10% discount)
+    """
+    try:
+        async with pricing_server:
+            result = await pricing_server.estimate_costs(
+                service_name=service_name,
+                sku_name=sku_name,
+                region=region,
+                hours_per_month=hours_per_month,
+                currency_code=currency_code,
+                discount_percentage=discount_percentage,
+            )
+
+            if "error" in result:
+                return f"Error: {result['error']}"
+
+            # Format cost estimate
+            estimate_text = f"""
 Cost Estimate for {result['service_name']} - {result['sku_name']}
 Region: {result['region']}
 Product: {result['product_name']}
@@ -1206,11 +1095,11 @@ Unit: {result['unit_of_measure']}
 Currency: {result['currency']}
 """
 
-                # Add discount information if applied
-                if "discount_applied" in result:
-                    estimate_text += f"\n💰 {result['discount_applied']['percentage']}% discount applied - {result['discount_applied']['note']}\n"
+            # Add discount information if applied
+            if "discount_applied" in result:
+                estimate_text += f"\n💰 {result['discount_applied']['percentage']}% discount applied - {result['discount_applied']['note']}\n"
 
-                estimate_text += f"""
+            estimate_text += f"""
 Usage Assumptions:
 - Hours per month: {result['usage_assumptions']['hours_per_month']}
 - Hours per day: {result['usage_assumptions']['hours_per_day']}
@@ -1222,155 +1111,220 @@ On-Demand Pricing:
 - Yearly Cost: ${result['on_demand_pricing']['yearly_cost']}
 """
 
-                # Add original pricing if discount was applied
-                if "discount_applied" in result and "original_hourly_rate" in result['on_demand_pricing']:
-                    estimate_text += f"""
+            # Add original pricing if discount was applied
+            if "discount_applied" in result and "original_hourly_rate" in result["on_demand_pricing"]:
+                estimate_text += f"""
 Original Pricing (before discount):
 - Hourly Rate: ${result['on_demand_pricing']['original_hourly_rate']}
 - Daily Cost: ${result['on_demand_pricing']['original_daily_cost']}
 - Monthly Cost: ${result['on_demand_pricing']['original_monthly_cost']}
 - Yearly Cost: ${result['on_demand_pricing']['original_yearly_cost']}
 """
-                
-                if result['savings_plans']:
-                    estimate_text += "\nSavings Plans Available:\n"
-                    for plan in result['savings_plans']:
-                        estimate_text += f"""
+
+            if result["savings_plans"]:
+                estimate_text += "\nSavings Plans Available:\n"
+                for plan in result["savings_plans"]:
+                    estimate_text += f"""
 {plan['term']} Term:
 - Hourly Rate: ${plan['hourly_rate']}
 - Monthly Cost: ${plan['monthly_cost']}
 - Yearly Cost: ${plan['yearly_cost']}
 - Savings: {plan['savings_percent']}% (${plan['annual_savings']} annually)
 """
-                        # Add original pricing for savings plans if discount was applied
-                        if "original_hourly_rate" in plan:
-                            estimate_text += f"""- Original Hourly Rate: ${plan['original_hourly_rate']}
+                    # Add original pricing for savings plans if discount was applied
+                    if "original_hourly_rate" in plan:
+                        estimate_text += f"""- Original Hourly Rate: ${plan['original_hourly_rate']}
 - Original Monthly Cost: ${plan['original_monthly_cost']}
 - Original Yearly Cost: ${plan['original_yearly_cost']}
 """
-                
-                return [
-                    TextContent(
-                        type="text",
-                        text=estimate_text
-                    )
-                ]
-            
-            elif name == "azure_discover_skus":
-                result = await pricing_server.discover_skus(**arguments)
-                
-                # Format the response
-                skus = result.get("skus", [])
-                if skus:
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Found {result['total_skus']} SKUs for {result['service_name']}:\n\n" +
-                                 json.dumps(skus, indent=2)
-                        )
-                    ]
-                else:
-                    return [
-                        TextContent(
-                            type="text",
-                            text="No SKUs found for the specified service."
-                        )
-                    ]
-            
-            elif name == "azure_sku_discovery":
-                result = await pricing_server.discover_service_skus(**arguments)
-                
-                if result["service_found"]:
-                    # Format successful SKU discovery
-                    service_name = result["service_found"]
-                    original_search = result["original_search"]
-                    skus = result["skus"]
-                    total_skus = result["total_skus"]
-                    match_type = result.get("match_type", "exact")
-                    
-                    response_text = f"SKU Discovery for '{original_search}'"
-                    
-                    if match_type == "exact_mapping":
-                        response_text += f" (mapped to: {service_name})"
-                    
-                    response_text += f"\n\nFound {total_skus} SKUs for {service_name}:\n\n"
-                    
-                    # Group SKUs by product
-                    products = {}
-                    for sku_name, sku_data in skus.items():
-                        product = sku_data["product_name"]
-                        if product not in products:
-                            products[product] = []
-                        products[product].append((sku_name, sku_data))
-                    
-                    for product, product_skus in products.items():
-                        response_text += f"📦 {product}:\n"
-                        for sku_name, sku_data in sorted(product_skus)[:10]:  # Limit to 10 per product
-                            min_price = sku_data.get("min_price", 0)
-                            unit = sku_data.get("sample_unit", "Unknown")
-                            region_count = len(sku_data.get("regions", []))
-                            
-                            response_text += f"   • {sku_name}\n"
-                            response_text += f"     Price: ${min_price} per {unit}"
-                            if region_count > 1:
-                                response_text += f" (available in {region_count} regions)"
-                            response_text += "\n"
+
+            return estimate_text
+    except Exception as e:
+        logger.error(f"Error in azure_cost_estimate: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def azure_discover_skus(
+    service_name: str,
+    region: Optional[str] = None,
+    price_type: str = "Consumption",
+    limit: int = 100,
+) -> str:
+    """Discover available SKUs for a specific Azure service.
+
+    Args:
+        service_name: Azure service name
+        region: Azure region (optional)
+        price_type: Price type (default: 'Consumption')
+        limit: Maximum number of SKUs to return (default: 100)
+    """
+    try:
+        async with pricing_server:
+            result = await pricing_server.discover_skus(
+                service_name=service_name,
+                region=region,
+                price_type=price_type,
+                limit=limit,
+            )
+
+            # Format the response
+            skus = result.get("skus", [])
+            if skus:
+                return (
+                    f"Found {result['total_skus']} SKUs for {result['service_name']}:\n\n"
+                    + json.dumps(skus, indent=2)
+                )
+            else:
+                return "No SKUs found for the specified service."
+    except Exception as e:
+        logger.error(f"Error in azure_discover_skus: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def azure_sku_discovery(
+    service_hint: str,
+    region: Optional[str] = None,
+    currency_code: str = "USD",
+    limit: int = 30,
+) -> str:
+    """Discover available SKUs for Azure services with intelligent name matching.
+
+    Args:
+        service_hint: Service name or description (e.g., 'app service', 'web app', 'vm', 'storage'). Supports fuzzy matching.
+        region: Optional Azure region to filter results
+        currency_code: Currency code (default: USD)
+        limit: Maximum number of results (default: 30)
+    """
+    try:
+        async with pricing_server:
+            result = await pricing_server.discover_service_skus(
+                service_hint=service_hint,
+                region=region,
+                currency_code=currency_code,
+                limit=limit,
+            )
+
+            if result["service_found"]:
+                # Format successful SKU discovery
+                service_name = result["service_found"]
+                original_search = result["original_search"]
+                skus = result["skus"]
+                total_skus = result["total_skus"]
+                match_type = result.get("match_type", "exact")
+
+                response_text = f"SKU Discovery for '{original_search}'"
+
+                if match_type == "exact_mapping":
+                    response_text += f" (mapped to: {service_name})"
+
+                response_text += (
+                    f"\n\nFound {total_skus} SKUs for {service_name}:\n\n"
+                )
+
+                # Group SKUs by product
+                products = {}
+                for sku_name_key, sku_data in skus.items():
+                    product = sku_data["product_name"]
+                    if product not in products:
+                        products[product] = []
+                    products[product].append((sku_name_key, sku_data))
+
+                for product, product_skus in products.items():
+                    response_text += f"📦 {product}:\n"
+                    for sku_name_key, sku_data in sorted(product_skus)[
+                        :10
+                    ]:  # Limit to 10 per product
+                        min_price = sku_data.get("min_price", 0)
+                        unit = sku_data.get("sample_unit", "Unknown")
+                        region_count = len(sku_data.get("regions", []))
+
+                        response_text += f"   • {sku_name_key}\n"
+                        response_text += f"     Price: ${min_price} per {unit}"
+                        if region_count > 1:
+                            response_text += (
+                                f" (available in {region_count} regions)"
+                            )
                         response_text += "\n"
-                    
-                    return [
-                        TextContent(
-                            type="text",
-                            text=response_text
-                        )
-                    ]
+                    response_text += "\n"
+
+                return response_text
+            else:
+                # Format suggestions when no exact match
+                suggestions = result.get("suggestions", [])
+                original_search = result["original_search"]
+
+                if suggestions:
+                    response_text = (
+                        f"No exact match found for '{original_search}'\n\n"
+                    )
+                    response_text += "🔍 Did you mean one of these services?\n\n"
+
+                    for i, suggestion in enumerate(suggestions[:5], 1):
+                        service_name = suggestion["service_name"]
+                        match_reason = suggestion["match_reason"]
+                        sample_items = suggestion["sample_items"]
+
+                        response_text += f"{i}. {service_name}\n"
+                        response_text += f"   Reason: {match_reason}\n"
+
+                        if sample_items:
+                            response_text += "   Sample SKUs:\n"
+                            for item in sample_items[:3]:
+                                sku = item.get("skuName", "Unknown")
+                                price = item.get("retailPrice", 0)
+                                unit = item.get("unitOfMeasure", "Unknown")
+                                response_text += (
+                                    f"     • {sku}: ${price} per {unit}\n"
+                                )
+                        response_text += "\n"
+
+                    response_text += (
+                        "💡 Try using one of the exact service names above."
+                    )
                 else:
-                    # Format suggestions when no exact match
-                    suggestions = result.get("suggestions", [])
-                    original_search = result["original_search"]
-                    
-                    if suggestions:
-                        response_text = f"No exact match found for '{original_search}'\n\n"
-                        response_text += "🔍 Did you mean one of these services?\n\n"
-                        
-                        for i, suggestion in enumerate(suggestions[:5], 1):
-                            service_name = suggestion["service_name"]
-                            match_reason = suggestion["match_reason"]
-                            sample_items = suggestion["sample_items"]
-                            
-                            response_text += f"{i}. {service_name}\n"
-                            response_text += f"   Reason: {match_reason}\n"
-                            
-                            if sample_items:
-                                response_text += "   Sample SKUs:\n"
-                                for item in sample_items[:3]:
-                                    sku = item.get("skuName", "Unknown")
-                                    price = item.get("retailPrice", 0)
-                                    unit = item.get("unitOfMeasure", "Unknown")
-                                    response_text += f"     • {sku}: ${price} per {unit}\n"
-                            response_text += "\n"
-                        
-                        response_text += "💡 Try using one of the exact service names above."
-                    else:
-                        response_text = f"No matches found for '{original_search}'\n\n"
-                        response_text += "💡 Try using terms like:\n"
-                        response_text += "• 'app service' or 'web app' for Azure App Service\n"
-                        response_text += "• 'vm' or 'virtual machine' for Virtual Machines\n"
-                        response_text += "• 'storage' or 'blob' for Storage services\n"
-                        response_text += "• 'sql' or 'database' for SQL Database\n"
-                        response_text += "• 'kubernetes' or 'aks' for Azure Kubernetes Service"
-                    
-                    return [
-                        TextContent(
-                            type="text",
-                            text=response_text
-                        )
-                    ]
-            
-            elif name == "get_customer_discount":
-                result = await pricing_server.get_customer_discount(**arguments)
-                
-                response_text = f"""Customer Discount Information
-                
+                    response_text = (
+                        f"No matches found for '{original_search}'\n\n"
+                    )
+                    response_text += "💡 Try using terms like:\n"
+                    response_text += (
+                        "• 'app service' or 'web app' for Azure App Service\n"
+                    )
+                    response_text += (
+                        "• 'vm' or 'virtual machine' for Virtual Machines\n"
+                    )
+                    response_text += (
+                        "• 'storage' or 'blob' for Storage services\n"
+                    )
+                    response_text += (
+                        "• 'sql' or 'database' for SQL Database\n"
+                    )
+                    response_text += "• 'kubernetes' or 'aks' for Azure Kubernetes Service"
+
+                return response_text
+    except Exception as e:
+        logger.error(f"Error in azure_sku_discovery: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def get_customer_discount(
+    customer_id: Optional[str] = None,
+) -> str:
+    """Get customer discount information. Returns default 10% discount for all customers.
+
+    Args:
+        customer_id: Customer ID (optional, defaults to 'default' customer)
+    """
+    try:
+        async with pricing_server:
+            result = await pricing_server.get_customer_discount(
+                customer_id=customer_id
+            )
+
+            response_text = f"""Customer Discount Information
+
 Customer ID: {result['customer_id']}
 Discount Type: {result['discount_type']}
 Discount Percentage: {result['discount_percentage']}%
@@ -1379,39 +1333,57 @@ Applicable Services: {result['applicable_services']}
 
 {result['note']}
 """
-                
-                return [
-                    TextContent(
-                        type="text",
-                        text=response_text
-                    )
-                ]
-            
-            else:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Unknown tool: {name}"
-                    )
-                ]
-    except Exception as e:
-        logger.error(f"Error handling tool call {name}: {e}")
-        return [
-            TextContent(
-                type="text",
-                text=f"Error: {str(e)}"
-            )
-        ]
 
-async def main():
+            return response_text
+    except Exception as e:
+        logger.error(f"Error in get_customer_discount: {e}")
+        return f"Error: {str(e)}"
+
+
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Azure Pricing MCP Server - supports stdio, SSE, and Streamable HTTP transports"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="streamable-http",
+        help="Transport protocol to use (default: streamable-http)",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="Host to bind to for HTTP transports (default: 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind to for HTTP transports (default: 8000)",
+    )
+    return parser.parse_args()
+
+
+def main():
     """Main entry point for the server."""
-    # Use stdio transport
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options()
-        )
+    args = parse_args()
+
+    # Update host/port from CLI args
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+
+    logger.info(f"Starting Azure Pricing MCP Server with {args.transport} transport")
+    if args.transport in ("sse", "streamable-http"):
+        logger.info(f"Listening on {args.host}:{args.port}")
+        if args.transport == "streamable-http":
+            logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/mcp")
+        elif args.transport == "sse":
+            logger.info(f"SSE endpoint: http://{args.host}:{args.port}/sse")
+
+    mcp.run(transport=args.transport)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
