@@ -1414,7 +1414,7 @@ def _run_all_transports(host: str, port: int):
 
     # Load the test UI HTML
     ui_path = Path(__file__).parent / "static" / "index.html"
-    _ui_html: str | None = None
+    _ui_html: Optional[str] = None
     if ui_path.exists():
         _ui_html = ui_path.read_text()
 
