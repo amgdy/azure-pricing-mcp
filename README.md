@@ -11,6 +11,9 @@ A Model Context Protocol (MCP) server that provides tools for querying Azure ret
    # Remote server (Streamable HTTP - recommended)
    python azure_pricing_server.py
 
+   # All transports (SSE + Streamable HTTP together)
+   python azure_pricing_server.py --transport all
+
    # Or with SSE transport
    python azure_pricing_server.py --transport sse
 
@@ -33,6 +36,7 @@ A Model Context Protocol (MCP) server that provides tools for querying Azure ret
 
 | Transport | Endpoint | Use Case |
 |-----------|----------|----------|
+| **All** (SSE + Streamable HTTP) | `/mcp` and `/sse` | Container/cloud deployment (serves both simultaneously) |
 | **Streamable HTTP** (default) | `http://host:port/mcp` | Remote clients, cloud deployment, production |
 | **SSE** (Server-Sent Events) | `http://host:port/sse` | Real-time streaming, legacy MCP clients |
 | **stdio** | stdin/stdout | Local integration with Claude Desktop, VS Code |
@@ -79,6 +83,12 @@ pip install -r requirements.txt
 
 ## 🚀 Running the Server
 
+### Remote Server (All Transports - SSE + Streamable HTTP)
+```bash
+# Serve both SSE and Streamable HTTP on the same port
+python azure_pricing_server.py --transport all --host 0.0.0.0 --port 8000
+```
+
 ### Remote Server (Streamable HTTP - Recommended)
 ```bash
 # Default: Streamable HTTP on localhost:8000
@@ -104,14 +114,102 @@ python azure_pricing_server.py --transport stdio
 
 ### Command-Line Options
 ```
-usage: azure_pricing_server.py [-h] [--transport {stdio,sse,streamable-http}]
+usage: azure_pricing_server.py [-h] [--transport {stdio,sse,streamable-http,all}]
                                 [--host HOST] [--port PORT]
 
 options:
-  --transport {stdio,sse,streamable-http}  Transport protocol (default: streamable-http)
+  --transport {stdio,sse,streamable-http,all}  Transport protocol (default: streamable-http).
+                                                Use 'all' to serve SSE + Streamable HTTP together.
   --host HOST                               Host to bind to (default: 127.0.0.1)
   --port PORT                               Port to bind to (default: 8000)
 ```
+
+## 🐳 Docker
+
+### Run Locally with Docker
+```bash
+# Build the container
+docker build -t azure-pricing-mcp .
+
+# Run with all transports (SSE + Streamable HTTP) — default
+docker run -p 8000:8000 azure-pricing-mcp
+
+# Run with a single transport
+docker run -p 8000:8000 azure-pricing-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+The container exposes both endpoints simultaneously:
+- **Streamable HTTP**: `http://localhost:8000/mcp`
+- **SSE**: `http://localhost:8000/sse`
+
+## ☁️ Deploy to Azure
+
+This project includes [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/) support for one-command deployment to **Azure Container Apps**.
+
+### Prerequisites
+- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Docker](https://docs.docker.com/get-docker/) (for building the container image)
+- An Azure subscription
+
+### Deploy
+```bash
+# Authenticate with Azure
+azd auth login
+
+# Provision infrastructure and deploy the container
+azd up
+```
+
+That's it! `azd up` will:
+1. Create an Azure Resource Group
+2. Create an Azure Container Registry
+3. Build and push the Docker image
+4. Create an Azure Container Apps Environment
+5. Deploy the container with all MCP transports enabled
+
+### After Deployment
+
+The command outputs the deployed endpoints:
+```
+MCP_SERVER_STREAMABLE_HTTP_ENDPOINT = https://<your-app>.azurecontainerapps.io/mcp
+MCP_SERVER_SSE_ENDPOINT             = https://<your-app>.azurecontainerapps.io/sse
+```
+
+Connect your MCP client to either endpoint:
+```json
+{
+  "mcpServers": {
+    "azure-pricing": {
+      "url": "https://<your-app>.azurecontainerapps.io/mcp"
+    }
+  }
+}
+```
+
+### Other azd Commands
+```bash
+# Provision infrastructure only (no deploy)
+azd provision
+
+# Deploy code changes only
+azd deploy
+
+# Tear down all resources
+azd down
+
+# View deployed environment
+azd show
+```
+
+### Azure Resources Created
+
+| Resource | Purpose |
+|----------|---------|
+| **Resource Group** | Container for all resources |
+| **Azure Container Registry** | Stores the Docker image |
+| **Azure Container Apps Environment** | Hosting environment with Log Analytics |
+| **Azure Container App** | Runs the MCP server container |
+| **Log Analytics Workspace** | Monitoring and diagnostics |
 
 ## 🔧 Client Configuration
 
