@@ -2,6 +2,8 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for querying **Azure retail pricing** data. Comes with a built-in test UI, supports remote deployment via Streamable HTTP and SSE, and can be deployed to Azure Container Apps with a single command.
 
+![Test UI](https://github.com/user-attachments/assets/ea08dfb6-a808-4a07-981b-bbf98dd15198)
+
 ## Quick Start
 
 ```bash
