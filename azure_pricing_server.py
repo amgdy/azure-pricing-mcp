@@ -13,8 +13,11 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlencode, quote
 
+import os
+
 import aiohttp
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -836,6 +839,24 @@ class AzurePricingServer:
 # Note: Default host is 127.0.0.1 (localhost only) for security.
 # Use --host 0.0.0.0 to expose to all network interfaces when deploying
 # behind a reverse proxy or in a trusted network environment.
+
+# Configure transport security for DNS rebinding protection.
+# When deployed behind a reverse proxy or cloud platform (e.g. Azure Container Apps),
+# the Host header will be the external domain, not localhost. We need to either:
+# - Disable DNS rebinding protection (the platform handles host validation), or
+# - Explicitly list allowed hosts via the MCP_ALLOWED_HOSTS environment variable.
+# See: https://github.com/modelcontextprotocol/python-sdk/issues/1798
+_allowed_hosts_env = os.environ.get("MCP_ALLOWED_HOSTS", "")
+if _allowed_hosts_env:
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[h.strip() for h in _allowed_hosts_env.split(",") if h.strip()],
+    )
+else:
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    )
+
 mcp = FastMCP(
     "azure-pricing",
     instructions="Azure Pricing MCP Server - Query Azure retail pricing information using the Azure Retail Prices API. "
@@ -843,6 +864,7 @@ mcp = FastMCP(
     host="127.0.0.1",
     port=8000,
     streamable_http_path="/",
+    transport_security=_transport_security,
 )
 
 # Global server instance

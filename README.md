@@ -142,6 +142,21 @@ The container exposes both endpoints simultaneously:
 - **Streamable HTTP**: `http://localhost:8000/`
 - **SSE**: `http://localhost:8000/sse`
 
+### DNS Rebinding Protection
+
+The MCP Python SDK includes DNS rebinding protection that validates incoming `Host` headers. By default, this server **disables** DNS rebinding protection to work seamlessly behind reverse proxies and cloud platforms (e.g. Azure Container Apps) that set external `Host` headers.
+
+To explicitly restrict which hosts are allowed, set the `MCP_ALLOWED_HOSTS` environment variable:
+
+```bash
+# Allow specific hosts (comma-separated)
+docker run -p 8000:8000 \
+  -e MCP_ALLOWED_HOSTS="myapp.azurecontainerapps.io,localhost:8000" \
+  azure-pricing-mcp
+```
+
+When `MCP_ALLOWED_HOSTS` is set, DNS rebinding protection is **enabled** and only the listed hosts are accepted. Requests with other `Host` headers will receive a `421` error.
+
 ## ☁️ Deploy to Azure
 
 This project includes [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/) support for one-command deployment to **Azure Container Apps**.
