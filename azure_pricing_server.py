@@ -842,6 +842,7 @@ mcp = FastMCP(
     "Supports price search, comparison, cost estimation, and SKU discovery.",
     host="127.0.0.1",
     port=8000,
+    streamable_http_path="/",
 )
 
 # Global server instance
@@ -1374,7 +1375,7 @@ def _run_all_transports(host: str, port: int):
     """Run both SSE and Streamable HTTP transports simultaneously on a single server.
 
     This creates a combined Starlette application that serves:
-      - /mcp      -> Streamable HTTP transport (recommended)
+      - /         -> Streamable HTTP transport (recommended)
       - /sse      -> SSE transport (legacy/backward compatibility)
       - /messages -> SSE message handling
     """
@@ -1388,7 +1389,8 @@ def _run_all_transports(host: str, port: int):
     sse_app = mcp.sse_app()
 
     # Combine all routes into a single Starlette application.
-    # Use the streamable app's lifespan (starts the session manager task group).
+    # SSE routes first (more specific /sse, /messages paths),
+    # then streamable HTTP route (/ catch-all) last.
     combined_routes = list(sse_app.routes) + list(streamable_app.routes)
     app = Starlette(
         routes=combined_routes,
@@ -1397,7 +1399,7 @@ def _run_all_transports(host: str, port: int):
 
     logger.info("Starting Azure Pricing MCP Server with ALL transports")
     logger.info(f"Listening on {host}:{port}")
-    logger.info(f"Streamable HTTP endpoint: http://{host}:{port}/mcp")
+    logger.info(f"Streamable HTTP endpoint: http://{host}:{port}/")
     logger.info(f"SSE endpoint:             http://{host}:{port}/sse")
 
     uvicorn.run(app, host=host, port=port)
@@ -1418,7 +1420,7 @@ def main():
         if args.transport in ("sse", "streamable-http"):
             logger.info(f"Listening on {args.host}:{args.port}")
             if args.transport == "streamable-http":
-                logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/mcp")
+                logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/")
             elif args.transport == "sse":
                 logger.info(f"SSE endpoint: http://{args.host}:{args.port}/sse")
 

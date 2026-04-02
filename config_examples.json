@@ -6,7 +6,7 @@
       "config": {
         "mcpServers": {
           "azure-pricing": {
-            "url": "http://localhost:8000/mcp"
+            "url": "http://localhost:8000/"
           }
         }
       }
@@ -42,7 +42,7 @@
         "mcp": {
           "servers": {
             "azure-pricing": {
-              "url": "http://localhost:8000/mcp"
+              "url": "http://localhost:8000/"
             }
           }
         },
@@ -71,7 +71,7 @@
       "1. Install dependencies: pip install -r requirements.txt",
       "2. Start the server: python azure_pricing_server.py",
       "3. The server runs on http://localhost:8000 by default",
-      "4. Streamable HTTP endpoint: http://localhost:8000/mcp",
+      "4. Streamable HTTP endpoint: http://localhost:8000/",
       "5. SSE endpoint: http://localhost:8000/sse (with --transport sse)",
       "6. Configure your MCP client to connect to the endpoint URL"
     ],
@@ -95,7 +95,7 @@
   },
   "server_options": {
     "transports": {
-      "streamable-http": "Default. Remote access via HTTP POST to /mcp endpoint",
+      "streamable-http": "Default. Remote access via HTTP POST to / endpoint",
       "sse": "Remote access via Server-Sent Events on /sse endpoint",
       "stdio": "Local access via standard input/output"
     },

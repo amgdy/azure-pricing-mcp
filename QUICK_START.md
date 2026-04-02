@@ -42,7 +42,7 @@ pip install -r requirements.txt
 python azure_pricing_server.py
 
 # The server will be available at:
-#   Streamable HTTP: http://localhost:8000/mcp
+#   Streamable HTTP: http://localhost:8000/
 ```
 
 ### Other Transport Options
@@ -66,7 +66,7 @@ python azure_pricing_server.py --host 127.0.0.1 --port 9000
 python azure_pricing_server.py
 
 # In another terminal, test the endpoint:
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
@@ -93,7 +93,7 @@ python test_server.py
 {
   "mcpServers": {
     "azure-pricing": {
-      "url": "http://localhost:8000/mcp"
+      "url": "http://localhost:8000/"
     }
   }
 }
@@ -125,7 +125,7 @@ No server process needed. Add to your config:
   "mcp": {
     "servers": {
       "azure-pricing": {
-        "url": "http://localhost:8000/mcp"
+        "url": "http://localhost:8000/"
       }
     }
   }
@@ -159,7 +159,7 @@ Once configured, you can ask Claude questions like:
 **"Connection refused" when connecting remotely:**
 - Make sure the server is running: `python azure_pricing_server.py`
 - Check the port is not blocked by a firewall
-- Verify the URL matches the transport (e.g., `/mcp` for Streamable HTTP)
+- Verify the URL matches the transport (e.g., `/` for Streamable HTTP)
 
 **"Import errors" when running:**
 - Make sure dependencies are installed: `pip install -r requirements.txt`

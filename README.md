@@ -20,7 +20,7 @@ A Model Context Protocol (MCP) server that provides tools for querying Azure ret
    # Or with stdio transport (local only)
    python azure_pricing_server.py --transport stdio
    ```
-4. **Connect your MCP client** to `http://localhost:8000/mcp` (Streamable HTTP) or `http://localhost:8000/sse` (SSE)
+4. **Connect your MCP client** to `http://localhost:8000/` (Streamable HTTP) or `http://localhost:8000/sse` (SSE)
 
 ## ✨ Features
 
@@ -36,8 +36,8 @@ A Model Context Protocol (MCP) server that provides tools for querying Azure ret
 
 | Transport | Endpoint | Use Case |
 |-----------|----------|----------|
-| **All** (SSE + Streamable HTTP) | `/mcp` and `/sse` | Container/cloud deployment (serves both simultaneously) |
-| **Streamable HTTP** (default) | `http://host:port/mcp` | Remote clients, cloud deployment, production |
+| **All** (SSE + Streamable HTTP) | `/` and `/sse` | Container/cloud deployment (serves both simultaneously) |
+| **Streamable HTTP** (default) | `http://host:port/` | Remote clients, cloud deployment, production |
 | **SSE** (Server-Sent Events) | `http://host:port/sse` | Real-time streaming, legacy MCP clients |
 | **stdio** | stdin/stdout | Local integration with Claude Desktop, VS Code |
 
@@ -139,7 +139,7 @@ docker run -p 8000:8000 azure-pricing-mcp --transport streamable-http --host 0.0
 ```
 
 The container exposes both endpoints simultaneously:
-- **Streamable HTTP**: `http://localhost:8000/mcp`
+- **Streamable HTTP**: `http://localhost:8000/`
 - **SSE**: `http://localhost:8000/sse`
 
 ## ☁️ Deploy to Azure
@@ -171,7 +171,7 @@ That's it! `azd up` will:
 
 The command outputs the deployed endpoints:
 ```
-MCP_SERVER_STREAMABLE_HTTP_ENDPOINT = https://<your-app>.azurecontainerapps.io/mcp
+MCP_SERVER_STREAMABLE_HTTP_ENDPOINT = https://<your-app>.azurecontainerapps.io/
 MCP_SERVER_SSE_ENDPOINT             = https://<your-app>.azurecontainerapps.io/sse
 ```
 
@@ -180,7 +180,7 @@ Connect your MCP client to either endpoint:
 {
   "mcpServers": {
     "azure-pricing": {
-      "url": "https://<your-app>.azurecontainerapps.io/mcp"
+      "url": "https://<your-app>.azurecontainerapps.io/"
     }
   }
 }
@@ -218,7 +218,7 @@ azd show
 {
   "mcpServers": {
     "azure-pricing": {
-      "url": "http://localhost:8000/mcp"
+      "url": "http://localhost:8000/"
     }
   }
 }
@@ -243,7 +243,7 @@ azd show
   "mcp": {
     "servers": {
       "azure-pricing": {
-        "url": "http://localhost:8000/mcp"
+        "url": "http://localhost:8000/"
       }
     }
   }
@@ -286,13 +286,13 @@ python azure_pricing_server.py
 
 # In another terminal, test with curl:
 # Initialize session
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 
 # List tools (use session ID from response headers)
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: <SESSION_ID>" \
@@ -325,7 +325,7 @@ This server uses the official Azure Retail Prices API:
 ## 🌟 Key Features
 
 ### Multi-Transport Support
-- **Streamable HTTP**: Modern, efficient remote protocol on `/mcp` endpoint
+- **Streamable HTTP**: Modern, efficient remote protocol on `/` endpoint
 - **SSE**: Server-Sent Events for real-time streaming on `/sse` endpoint
 - **stdio**: Standard I/O for local subprocess integration
 
