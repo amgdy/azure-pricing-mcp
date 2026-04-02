@@ -1350,9 +1350,10 @@ def parse_args():
     )
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse", "streamable-http"],
+        choices=["stdio", "sse", "streamable-http", "all"],
         default="streamable-http",
-        help="Transport protocol to use (default: streamable-http)",
+        help="Transport protocol to use (default: streamable-http). "
+        "Use 'all' to serve both SSE and Streamable HTTP simultaneously.",
     )
     parser.add_argument(
         "--host",
@@ -1369,6 +1370,39 @@ def parse_args():
     return parser.parse_args()
 
 
+def _run_all_transports(host: str, port: int):
+    """Run both SSE and Streamable HTTP transports simultaneously on a single server.
+
+    This creates a combined Starlette application that serves:
+      - /mcp      -> Streamable HTTP transport (recommended)
+      - /sse      -> SSE transport (legacy/backward compatibility)
+      - /messages -> SSE message handling
+    """
+    import uvicorn
+    from starlette.applications import Starlette
+
+    # Get the Starlette sub-apps from FastMCP.
+    # The streamable HTTP app must be created first so its session_manager
+    # is initialized, which we need for the combined lifespan.
+    streamable_app = mcp.streamable_http_app()
+    sse_app = mcp.sse_app()
+
+    # Combine all routes into a single Starlette application.
+    # Use the streamable app's lifespan (starts the session manager task group).
+    combined_routes = list(sse_app.routes) + list(streamable_app.routes)
+    app = Starlette(
+        routes=combined_routes,
+        lifespan=lambda app: mcp.session_manager.run(),
+    )
+
+    logger.info("Starting Azure Pricing MCP Server with ALL transports")
+    logger.info(f"Listening on {host}:{port}")
+    logger.info(f"Streamable HTTP endpoint: http://{host}:{port}/mcp")
+    logger.info(f"SSE endpoint:             http://{host}:{port}/sse")
+
+    uvicorn.run(app, host=host, port=port)
+
+
 def main():
     """Main entry point for the server."""
     args = parse_args()
@@ -1377,15 +1411,18 @@ def main():
     mcp.settings.host = args.host
     mcp.settings.port = args.port
 
-    logger.info(f"Starting Azure Pricing MCP Server with {args.transport} transport")
-    if args.transport in ("sse", "streamable-http"):
-        logger.info(f"Listening on {args.host}:{args.port}")
-        if args.transport == "streamable-http":
-            logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/mcp")
-        elif args.transport == "sse":
-            logger.info(f"SSE endpoint: http://{args.host}:{args.port}/sse")
+    if args.transport == "all":
+        _run_all_transports(args.host, args.port)
+    else:
+        logger.info(f"Starting Azure Pricing MCP Server with {args.transport} transport")
+        if args.transport in ("sse", "streamable-http"):
+            logger.info(f"Listening on {args.host}:{args.port}")
+            if args.transport == "streamable-http":
+                logger.info(f"Streamable HTTP endpoint: http://{args.host}:{args.port}/mcp")
+            elif args.transport == "sse":
+                logger.info(f"SSE endpoint: http://{args.host}:{args.port}/sse")
 
-    mcp.run(transport=args.transport)
+        mcp.run(transport=args.transport)
 
 
 if __name__ == "__main__":
