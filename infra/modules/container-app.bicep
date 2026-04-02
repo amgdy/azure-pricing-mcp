@@ -33,10 +33,10 @@ param minReplicas int = 0
 param maxReplicas int = 1
 
 @description('CPU cores allocated to the container')
-param cpu string = '0.5'
+param cpu string = '2'
 
 @description('Memory allocated to the container')
-param memory string = '1Gi'
+param memory string = '4Gi'
 
 resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: containerAppsEnvironmentName
