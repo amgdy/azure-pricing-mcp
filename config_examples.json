@@ -1,27 +1,63 @@
 {
   "configurations": {
-    "claude_desktop": {
-      "description": "Configuration for Claude Desktop MCP servers",
+    "claude_desktop_remote": {
+      "description": "Configuration for Claude Desktop using remote Streamable HTTP transport (recommended)",
+      "file_location": "Claude Desktop config file (varies by OS)",
+      "config": {
+        "mcpServers": {
+          "azure-pricing": {
+            "url": "http://localhost:8000/mcp"
+          }
+        }
+      }
+    },
+    "claude_desktop_sse": {
+      "description": "Configuration for Claude Desktop using remote SSE transport",
+      "file_location": "Claude Desktop config file (varies by OS)",
+      "config": {
+        "mcpServers": {
+          "azure-pricing": {
+            "url": "http://localhost:8000/sse"
+          }
+        }
+      }
+    },
+    "claude_desktop_stdio": {
+      "description": "Configuration for Claude Desktop using local stdio transport",
       "file_location": "Claude Desktop config file (varies by OS)",
       "config": {
         "mcpServers": {
           "azure-pricing": {
             "command": "python",
-            "args": ["-m", "azure_pricing_server"],
+            "args": ["-m", "azure_pricing_server", "--transport", "stdio"],
             "cwd": "C:\\git\\mcp\\azure_pricing"
           }
         }
       }
     },
-    "vscode": {
-      "description": "Configuration for VS Code MCP integration",
+    "vscode_remote": {
+      "description": "Configuration for VS Code MCP integration using remote transport",
+      "file_location": "VS Code settings.json",
+      "config": {
+        "mcp": {
+          "servers": {
+            "azure-pricing": {
+              "url": "http://localhost:8000/mcp"
+            }
+          }
+        },
+        "chat.mcp.discovery.enabled": true
+      }
+    },
+    "vscode_stdio": {
+      "description": "Configuration for VS Code MCP integration using local stdio transport",
       "file_location": "VS Code settings.json",
       "config": {
         "mcp": {
           "servers": {
             "azure-pricing": {
               "command": "python",
-              "args": ["-m", "azure_pricing_server"],
+              "args": ["-m", "azure_pricing_server", "--transport", "stdio"],
               "cwd": "C:\\git\\mcp\\azure_pricing"
             }
           }
@@ -31,26 +67,48 @@
     }
   },
   "setup_instructions": {
+    "remote_server": [
+      "1. Install dependencies: pip install -r requirements.txt",
+      "2. Start the server: python azure_pricing_server.py",
+      "3. The server runs on http://0.0.0.0:8000 by default",
+      "4. Streamable HTTP endpoint: http://localhost:8000/mcp",
+      "5. SSE endpoint: http://localhost:8000/sse (with --transport sse)",
+      "6. Configure your MCP client to connect to the endpoint URL"
+    ],
     "claude_desktop": [
       "1. Locate your Claude Desktop config file:",
       "   - Windows: %APPDATA%/Claude/claude_desktop_config.json",
       "   - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
       "   - Linux: ~/.config/claude/claude_desktop_config.json",
-      "2. Add the 'mcpServers' configuration from above",
-      "3. Update the 'cwd' path to match your installation directory",
+      "2. For remote: Start the server first, then add the 'url' configuration",
+      "3. For local stdio: Add the 'command' configuration (no server needed)",
       "4. Restart Claude Desktop"
     ],
     "vscode": [
       "1. Open VS Code settings (Ctrl/Cmd + ,)",
       "2. Click 'Open Settings (JSON)' in the top right",
-      "3. Add the MCP configuration from above",
-      "4. Update the 'cwd' path to match your installation directory",
+      "3. For remote: Start the server first, then add the 'url' configuration",
+      "4. For local stdio: Add the 'command' configuration (no server needed)",
       "5. Restart VS Code",
       "6. The Azure Pricing tools should appear in GitHub Copilot Chat"
     ]
   },
+  "server_options": {
+    "transports": {
+      "streamable-http": "Default. Remote access via HTTP POST to /mcp endpoint",
+      "sse": "Remote access via Server-Sent Events on /sse endpoint",
+      "stdio": "Local access via standard input/output"
+    },
+    "cli_examples": [
+      "python azure_pricing_server.py                                    # Streamable HTTP on 0.0.0.0:8000",
+      "python azure_pricing_server.py --transport sse --port 9000        # SSE on port 9000",
+      "python azure_pricing_server.py --transport stdio                  # Local stdio",
+      "python azure_pricing_server.py --host 127.0.0.1 --port 3000      # Bind to localhost only"
+    ]
+  },
   "notes": {
-    "paths": "Update the 'cwd' path to match your actual installation directory",
+    "remote": "For remote transports, start the server before configuring clients",
+    "paths": "For stdio transport, update the 'cwd' path to match your actual installation directory",
     "python": "Ensure Python is in your PATH or use full path to python executable",
     "virtual_env": "If using a virtual environment, use the full path to the venv python executable"
   }
