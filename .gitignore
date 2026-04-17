@@ -78,3 +78,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Azure Developer CLI
+.azure/
+
+# Claude
+.claude/

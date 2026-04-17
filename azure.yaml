@@ -1,0 +1,16 @@
+name: azure-pricing-mcp
+metadata:
+  template: azure-pricing-mcp@1.0.0
+services:
+  mcp-server:
+    project: .
+    language: py
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+      remoteBuild: true
+infra:
+  provider: bicep
+  path: ./infra
+  module: main
